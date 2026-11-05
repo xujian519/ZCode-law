@@ -1,0 +1,1 @@
+import type { WritingPattern } from '../../src/writing-patterns/index.js'

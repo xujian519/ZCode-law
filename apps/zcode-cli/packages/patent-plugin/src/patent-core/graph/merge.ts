@@ -1,0 +1,99 @@
+/**
+ * src/patent/graph — Reducer 确定性合并（移植自 Mady graph/state_schema.go）。
+ *
+ * 同超步内所有节点并行执行后，结果按 **节点名字典序** 排序再逐 key 合并：
+ * - 排序保证 LWW 确定性（并发写同一 key 时，字典序后者胜出，与执行完成顺序无关）；
+ * - 未注册 schema 的 key 回落 last_write_wins；
+ * - fail_on_conflict：同 key 重复写入立即抛 GraphMergeError。
+ */
+
+import { assertNever } from '../utils.js'
+import { asRecord } from '../utils.js'
+import type { GraphState, NodeResult, Reducer } from './types.js'
+import { GraphEngineError } from './types.js'
+
+/** 合并 schema：key → Reducer。 */
+export type MergeSchema = Record<string, Reducer>
+
+/**
+ * 把单值转为数组（append/union 用）；已是数组原样返回。
+ * `undefined` 视为空数组，其余单值（含 `null`）保留为一个元素：丢弃既有值会让
+ * 一个已写入的状态在后续超步里无声消失。
+ */
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : value === undefined ? [] : [value]
+}
+
+/** union 去重键（规范化字符串，避免对象引用比较）。 */
+function unionKey(value: unknown): string {
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value)
+  return `${typeof value}:${String(value)}`
+}
+
+function appendValue(existing: unknown, value: unknown): unknown[] {
+  return [...asArray(existing), value]
+}
+
+function unionValues(existing: unknown, value: unknown): unknown[] {
+  const seen = new Set<string>()
+  const result: unknown[] = []
+  for (const item of [...asArray(existing), ...(Array.isArray(value) ? (value as unknown[]) : [value])]) {
+    const key = unionKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result
+}
+
+function mergeMap(existing: unknown, value: unknown): unknown {
+  const base = asRecord(existing) ?? {}
+  const incoming = asRecord(value) ?? {}
+  return { ...base, ...incoming }
+}
+
+/**
+ * 合并节点增量到共享 state（原地修改）。
+ * results 按节点名字典序排序后逐 key 应用 Reducer。
+ * @param state - 要原地更新的共享状态。
+ * @param results - 本超步各节点的增量结果。
+ * @param schema - key → Reducer 合并策略（缺省 last_write_wins）。
+ */
+export function mergeWithSchema(state: GraphState, results: NodeResult[], schema: MergeSchema = {}): void {
+  const sorted = [...results].sort((a, b) => a.node.localeCompare(b.node))
+  for (const { node, delta } of sorted) {
+    for (const [key, value] of Object.entries(delta)) {
+      const reducer: Reducer = schema[key] ?? 'last_write_wins'
+      switch (reducer) {
+        case 'last_write_wins':
+          state[key] = value
+          break
+        case 'append':
+          state[key] = appendValue(state[key], value)
+          break
+        case 'union':
+          state[key] = unionValues(state[key], value)
+          break
+        case 'merge_map':
+          state[key] = mergeMap(state[key], value)
+          break
+        case 'fail_on_conflict':
+          if (key in state) {
+            throw new GraphMergeError(`同超步内节点 "${node}" 写入 key "${key}" 与既有值冲突（fail_on_conflict）`)
+          }
+          state[key] = value
+          break
+        default:
+          assertNever(reducer, 'graph reducer')
+      }
+    }
+  }
+}
+
+/** 合并错误（fail_on_conflict 触发）。 */
+export class GraphMergeError extends GraphEngineError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GraphMergeError'
+  }
+}

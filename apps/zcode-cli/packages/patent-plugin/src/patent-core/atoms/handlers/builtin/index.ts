@@ -1,0 +1,136 @@
+/**
+ * 内置 Pipeline 原子聚合（按职责分域，公共 LLM 骨架见 llm.ts）。
+ *
+ * - search.ts：search（检索）/ keywords（关键词生成）
+ * - extract.ts：extract（结构化抽取）/ merge（PFIE 融合）
+ * - pfe.ts：pfe-consistency（PFIE 四元组结构一致性检查）
+ * - compare.ts：compare（特征对比）/ novelty（逐特征新颖性）
+ * - reason.ts：reasoning（自由推理）/ groundedness（原文依据过滤）
+ * - draft.ts：draft-claims（权利要求草稿）
+ * - gate.ts：approval-gate（人机审批门）
+ * - chart.ts：claim-chart（要素级证据网格）
+ * - notice.ts：oa-parse（通知书解析）/ grounds（程序法定理由识别）/ response-plan（答复计划骨架）
+ * - coverage.ts：coverage（侵权全面覆盖与等同一致性核验）
+ * - citation.ts：citation-check（结论引用与检索结果的一致性校验）
+ * - time-baseline.ts：time-baseline（申请日/优先权日 → 现有技术截止日）
+ * - prior-art-filter.ts：prior-art-filter（公开日 → 现有技术过滤 + A24 宽限期）
+ * - conflicting-application.ts：conflicting-application（抵触申请时间关系与同样性判定）
+ * - numeric-range.ts：numeric-range（权利要求数值范围与现有技术文本的重叠判定）
+ * - problem-check.ts：problem-check（实际解决的技术问题合规检查）
+ * - amendment-basis.ts：amendment-basis（A33 修改依据检查）
+ * - evidence-check.ts：evidence-check（无效/复审证据形式、期限与关联性审查）
+ */
+
+export {
+  searchAtom,
+  SearchHandler,
+  keywordsAtom,
+  KeywordsHandler,
+} from './search.js'
+export {
+  extractAtom,
+  ExtractHandler,
+  mergeAtom,
+  MergeHandler,
+  type PFETriple,
+} from './extract.js'
+export {
+  pfeConsistencyAtom,
+  PfeConsistencyHandler,
+  PFE_CONSISTENCY_VIOLATION_IDS,
+  checkPfeConsistency,
+  type PfeConsistencyViolationId,
+  type PfeConsistencyViolation,
+} from './pfe.js'
+export {
+  compareAtom,
+  CompareHandler,
+  noveltyAtom,
+  NoveltyHandler,
+  evidenceCoverage,
+} from './compare.js'
+export {
+  reasoningAtom,
+  ReasoningHandler,
+  groundednessAtom,
+  GroundednessHandler,
+  GROUNDEDNESS_THRESHOLD,
+} from './reason.js'
+export { draftClaimsAtom, DraftClaimsHandler } from './draft.js'
+export { degraded, type DegradedOptions } from './llm.js'
+export {
+  approvalGateAtom,
+  ApprovalGateHandler,
+  APPROVAL_GRANTED_KEY,
+  APPROVAL_GRANTED_NODES_KEY,
+  APPROVAL_GRANTED_OUTPUT,
+  isApprovalGateHandler,
+  isGateApproved,
+} from './gate.js'
+export { claimChartAtom, ClaimChartHandler, deriveOfficeActionTargets } from './chart.js'
+export {
+  oaParseAtom,
+  OaParseHandler,
+  groundsAtom,
+  GroundsHandler,
+  responsePlanAtom,
+  ResponsePlanHandler,
+  GROUND_PROGRAMS,
+  type GroundProgram,
+} from './notice.js'
+export { coverageAtom, CoverageHandler } from './coverage.js'
+export {
+  citationCheckAtom,
+  CitationCheckHandler,
+  DEFAULT_CITATION_REF_TEXT_KEYS,
+  DEFAULT_CITATION_PRIOR_ART_KEY,
+} from './citation.js'
+export { timeBaselineAtom, TimeBaselineHandler } from './time-baseline.js'
+export {
+  priorArtFilterAtom,
+  PriorArtFilterHandler,
+  A24_EXCEPTION_LABELS,
+  type A24Exception,
+  DEFAULT_PRIOR_ART_PUBLICATION_DATE_KEY,
+  DEFAULT_PRIOR_ART_A24_EXCEPTION_KEY,
+} from './prior-art-filter.js'
+export {
+  conflictingApplicationAtom,
+  ConflictingApplicationHandler,
+  DEFAULT_CONFLICTING_APPLICATIONS_KEY,
+  DEFAULT_TARGET_DATE_KEY,
+  DEFAULT_TARGET_FILING_DATE_KEY,
+} from './conflicting-application.js'
+export {
+  numericRangeAtom,
+  NumericRangeHandler,
+  DEFAULT_NUMERIC_RANGE_CLAIM_TEXT_KEYS,
+  DEFAULT_NUMERIC_RANGE_FALLBACK_TEXT_KEYS,
+  DEFAULT_NUMERIC_RANGE_PRIOR_ART_KEY,
+} from './numeric-range.js'
+export {
+  problemCheckAtom,
+  ProblemCheckHandler,
+  DEFAULT_PROBLEM_DIFF_TEXT_KEYS,
+  DEFAULT_PROBLEM_FEATURE_KEYS,
+  type ProblemCheckViolation,
+} from './problem-check.js'
+export {
+  amendmentBasisAtom,
+  AmendmentBasisHandler,
+  DEFAULT_AMENDMENT_AMENDED_TEXT_KEYS,
+  DEFAULT_AMENDMENT_ORIGINAL_TEXT_KEYS,
+  type AmendmentBasisViolation,
+} from './amendment-basis.js'
+export {
+  evidenceCheckAtom,
+  EvidenceCheckHandler,
+  DEFAULT_EVIDENCE_KEY,
+  DEFAULT_EVIDENCE_DEADLINE_KEY,
+  DEFAULT_EVIDENCE_REFERENCE_DATE_KEY,
+  DEFAULT_EVIDENCE_FILING_DATE_KEY,
+  DEFAULT_EVIDENCE_PRIORITY_DATE_KEY,
+  type EvidenceCheckSeverity,
+  type EvidenceCheckViolation,
+  type EvidenceCheckPending,
+} from './evidence-check.js'

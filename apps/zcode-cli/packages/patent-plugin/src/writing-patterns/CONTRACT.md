@@ -1,0 +1,3 @@
+# patent-writing-patterns
+
+撰写模式语料纯库：10 个 YAML 种子模式（交底书/独权/从权/说明书/OA 答复/IPC/实施例等类目）的 fail-loud 加载、词法检索与案件特征匹配、`<writing_skills>` XML 技能编译、system-prompt section 文案组装（源：DSH `@deepseek-ai/dsh-writing-patterns`，语料移植自 MIT 许可的 Go 项目 Mady）。意图：给技能编排与 `query_writing_patterns` 工具（P3 由 patent-tools 重建）提供确定性的模式检索/编译能力。不变量：语料加载 fail-loud（目录不可读、无 `.yaml/.yml`、未知字段、order 不连续、id 跨文件重复均抛 `PatternAssetError` 并点名文件）；检索/匹配词法确定性，同查询同语料必同结果；质量权重缺省 0.8。资产随模块共置于 `src/writing-patterns/assets/patterns/`。与其它模块的交集：tool-types.ts/tool-logic.ts 是 P3 patent-tools 重建 `query_writing_patterns` 工具的类型与逻辑来源；源语料 `source_ref` 法条引用的核验测试依赖 patent-law 模块（跨模块测试待其就绪后联调）。Cordis 插件壳不迁。

@@ -1,0 +1,161 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  formatStandardsAsContext,
+  loadIpcStandards,
+  queryByArticle,
+  queryIpcDetail,
+  queryIpcStandards,
+  searchStandards,
+} from '../../src/patent-core/index.js'
+
+// 移植适配：资产随模块共置于 src/patent-core/assets/（docs/patent-domain/architecture.md），
+// 测试从源树位置直接读取，不再经 tests/ 旁的副本。
+const STANDARDS_PATH = fileURLToPath(new URL('../../src/patent-core/assets/ipc-standards.yaml', import.meta.url))
+
+describe('ipc-standards-loader', () => {
+  it('loads over 100 examination-standard cards', () => {
+    const index = loadIpcStandards(STANDARDS_PATH)
+    expect(index.all.length).toBeGreaterThan(100)
+  })
+
+  it('populates card fields', () => {
+    const index = loadIpcStandards(STANDARDS_PATH)
+    for (const card of index.all.slice(0, 10)) {
+      expect(card.id.length).toBeGreaterThan(0)
+      expect(card.article.length).toBeGreaterThan(0)
+      expect(card.ipcSection.length).toBeGreaterThan(0)
+      expect(card.name.length).toBeGreaterThan(0)
+      expect(Array.isArray(card.keyPoints)).toBe(true)
+      expect(Array.isArray(card.tips)).toBe(true)
+    }
+  })
+
+  it('queries by IPC section (G has at least one card)', () => {
+    const cards = queryIpcStandards('G')
+    expect(cards.length).toBeGreaterThan(0)
+    for (const card of cards) {
+      expect(card.ipcSection).toBe('G')
+    }
+  })
+
+  it('queries by IPC detail (A61)', () => {
+    const cards = queryIpcDetail('A61')
+    expect(cards.length).toBeGreaterThan(0)
+    for (const card of cards) {
+      expect(card.ipcDetail).toBe('A61')
+    }
+  })
+
+  it('queries by law article (patent-law-a22.3)', () => {
+    const cards = queryByArticle('patent-law-a22.3')
+    expect(cards.length).toBeGreaterThan(0)
+  })
+
+  it('每张卡片的 keyPoints 与 tips 不同时为空', () => {
+    // 空壳卡片在 <memory-context> 中只产出裸标题行：既占 token 预算，又让模型
+    // 误读为该 IPC 部已提供审查标准。资产补齐后由本断言固定，源库演进产生新
+    // 空壳时立即失败，而不是等到模型给出错误结论。
+    const shells = loadIpcStandards(STANDARDS_PATH).all
+      .filter(card => card.keyPoints.length === 0 && card.tips.length === 0)
+      .map(card => card.id)
+    expect(shells).toEqual([])
+  })
+
+  it('每张卡片的 source 指向 Wiki 目录下的源文件路径', () => {
+    // source 是回源核对与漂移检测的唯一线索。头部注释与每条 source 曾漏掉
+    // Wiki/ 这一层，按注释字面定位会 404。
+    for (const card of loadIpcStandards(STANDARDS_PATH).all) {
+      expect(card.source).toMatch(/^宝宸知识库\/Wiki\/复审无效\//)
+    }
+  })
+
+  it('searches by keyword with a limit', () => {
+    const cards = searchStandards('医药', 5)
+    expect(cards.length).toBeGreaterThan(0)
+    expect(cards.length).toBeLessThanOrEqual(5)
+  })
+
+  it('formats cards as context text', () => {
+    const cards = queryIpcStandards('G')
+    const text = formatStandardsAsContext(cards)
+    expect(text.length).toBeGreaterThan(0)
+    expect(text).toContain('[')
+  })
+
+  it('注入上下文时跳过无实质内容的卡片', () => {
+    const cards = queryIpcStandards('G')
+    const shell = {
+      id: 'SHELL-ONLY',
+      article: 'patent-law-a22.3',
+      ipcSection: 'G',
+      ipcDetail: 'G06',
+      name: '只有标题的空壳',
+      keyPoints: [],
+      tips: [],
+      source: '',
+    }
+    const withShell = formatStandardsAsContext([...cards, shell])
+    expect(withShell).not.toContain('只有标题的空壳')
+    expect(withShell).not.toContain('SHELL-ONLY')
+    // 全部卡片都无内容时返回空串，而不是产出一行裸标题。
+    expect(formatStandardsAsContext([shell])).toBe('')
+    expect(formatStandardsAsContext([])).toBe('')
+  })
+})
+
+describe('ipc-standards-loader 资产归属', () => {
+  it('只随模块 assets/ 一份，位于 src/patent-core/assets/', () => {
+    // 移植适配：DSH 用 npm files 清单固定随包资产；ZCode 侧为私有插件包、资产随模块共置
+    // （architecture.md），改为断言源树唯一副本位置。
+    expect(existsSync(new URL('../../src/patent-core/assets/ipc-standards.yaml', import.meta.url))).toBe(true)
+    // 源树内不得再有第二份同名副本：两份都活在候选表里时，改一份不会让任何测试发现另一份变旧。
+    expect(existsSync(new URL('../../src/patent-core/ipc/ipc-standards.yaml', import.meta.url))).toBe(false)
+    expect(existsSync(new URL('../assets/ipc-standards.yaml', import.meta.url))).toBe(false)
+  })
+})
+
+describe('loadIpcStandards 与 overridePath', () => {
+  /** 写一个只含一张卡片的临时资产，作为与随包资产可区分的覆盖源。 */
+  function writeOverride(dir: string, name: string, cardId: string): string {
+    const path = join(dir, name)
+    writeFileSync(path, `standards:\n  - id: ${cardId}\n    article: patent-law-a22.3\n    ipcSection: G\n    name: 覆盖卡片\n`, 'utf8')
+    return path
+  }
+
+  it('覆盖路径即时生效，且既不写入单例也不被后续默认调用读到', async () => {
+    vi.resetModules()
+    const { loadIpcStandards: freshLoad } = await import('../../src/patent-core/index.js')
+    const dir = mkdtempSync(join(tmpdir(), 'ipc-override-'))
+    const first = writeOverride(dir, 'first.yaml', 'OVERRIDE-1')
+    const second = writeOverride(dir, 'second.yaml', 'OVERRIDE-2')
+    try {
+      const shipped = freshLoad()
+      expect(shipped.all.length).toBeGreaterThan(100)
+      expect(freshLoad(first).all.map(card => card.id)).toEqual(['OVERRIDE-1'])
+      // 覆盖不污染单例：默认调用仍是随包索引本身，而不是覆盖结果。
+      expect(freshLoad()).toBe(shipped)
+      // 覆盖结果不进缓存：换一个覆盖路径立刻读到新内容。
+      expect(freshLoad(second).all.map(card => card.id)).toEqual(['OVERRIDE-2'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('先覆盖后默认：默认调用仍读随包资产', async () => {
+    vi.resetModules()
+    const { loadIpcStandards: freshLoad } = await import('../../src/patent-core/index.js')
+    const dir = mkdtempSync(join(tmpdir(), 'ipc-override-'))
+    try {
+      expect(freshLoad(writeOverride(dir, 'first.yaml', 'OVERRIDE-1')).all.map(card => card.id)).toEqual(['OVERRIDE-1'])
+      expect(freshLoad().all.length).toBeGreaterThan(100)
+      // 默认调用两次仍共享同一实例（单例只覆盖默认路径）。
+      expect(freshLoad()).toBe(freshLoad())
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

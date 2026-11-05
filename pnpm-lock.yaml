@@ -725,6 +725,22 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  apps/zcode-cli/packages/patent-plugin:
+    dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.0.0
+        version: 2.0.0
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.6.5
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+
   apps/zcode-cli/packages/pdf-plugin:
     devDependencies:
       '@zcode/office-runtime':
